@@ -1,4 +1,6 @@
-* Ugly tools to build rpm using Mer SDK
+* Ugly tools
+
+"git rpmbuild" allows to build rpm in the Mer SDK.
 
 ** Installation
 
