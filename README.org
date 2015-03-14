@@ -1,0 +1,6 @@
+* Ugly tools to build rpm using Mer SDK
+
+** Installation
+
+   Just put git-* files in any directory from $PATH and provide
+   MER_SDK_ROOT env variable pointing to the Mer SDK root dir.

@@ -1,0 +1,36 @@
+#!/bin/bash
+
+if [ $# -le 3 ]; then
+    echo $0 "$#? prefix refspec outdir archive_extension"
+    exit 1
+fi
+
+ext=$4
+case $ext in
+    bz2)
+        tool=bzip2
+        ;;
+    gz)
+        tool=gzip
+        ;;
+    tbz2)
+        tool=bzip2
+        ;;
+    tgz)
+        tool=gzip
+        ;;
+    xz)
+        tool=xz
+        ;;
+    *)
+        echo "$0: Need association for '$ext'"
+        exit 1
+esac
+
+out=$3/$1.tar.$ext
+echo "Compress with $tool"
+
+cd "$(git rev-parse --show-toplevel)"
+
+echo "Tar commit $2 with prefix $1"
+git archive --prefix=$1/ --format=tar $2 | $tool > $out

@@ -1,0 +1,73 @@
+#!/bin/bash
+
+function usage
+{
+    echo $0 "prefix target refspec"
+    targets=$(find -L ${HOME}/.scratchbox2 -maxdepth 1 -type d \
+                   -exec basename {} \; | grep -v '\..*')
+    echo "Targets: $targets"
+    exit 1
+}
+
+if [ $# -le 2 ]; then
+    usage
+fi
+
+if [ "x${MER_SDK_ROOT}" == "x" ]; then
+    echo "Define MER_SDK_ROOT environment var"
+    exit 1
+fi
+
+spec=$1
+spec_in=rpm/$1.spec
+target=$2
+refspec=$3
+archive_ext=$4
+
+tag=$(git describe --abbrev=0 --tags | sed -e 's|.*/||' -e 's|-git[0-9]*||')
+echo "Version $tag"
+if ! [ -f $spec_in ] && [ -f $spec ]; then
+    echo "Using $spec as the source spec file"
+    spec_in=$spec
+fi
+echo "Using spec file $spec_in"
+archive_ext=$(grep '^Source0:' $spec_in | head -n 1 \
+                     | sed -e 's|^.*\.||')
+spec_dir=$(dirname $spec_in)
+spec_out=$HOME/rpmbuild/SOURCES/$(basename $spec_in)
+name=$(grep '^Name: ' $spec_in | head -n 1 | cut -d ':' -f 2  | tr -d ' ')
+prefix=$name-$tag
+
+for i in $(cat $spec_in | grep '^Source[0-9]*:' | sed -e 's/^Source[0-9]*: *//'); do
+    i=$(echo "$i" | sed -e "s|%{name}|$name|" -e "s|%{version}|$tag|")
+    echo "Taking file $i"
+    fname=$spec_dir/$i
+    if [ -f $fname ]; then
+        echo "COPY $i to sources"
+        cp $fname $HOME/rpmbuild/SOURCES
+    fi
+done
+
+curdir=`pwd`
+echo "Building package $name"
+echo "Using $tag commit. Prefix: $prefix"
+re="s/^Version:.*$/Version: $tag/"
+echo "RE: $re"
+if [ $target == "local" ]; then
+    echo "Build multiarch, no oneshot"
+    cmd="rpmbuild ${@:5} -ba $spec_out"
+    echo "Building using: $cmd"
+    cat $spec_in | sed -e "$re" > $spec_out \
+        && git compress $prefix $refspec $HOME/rpmbuild/SOURCES $archive_ext \
+        && $cmd --with=multiarch --without=oneshot --without=usersession --define 'statefs_group wheel'
+else
+    cmd="sdk-rpmbuild ${@:5} $spec_out"
+    echo "Building using: $cmd"
+    echo "In mer sdk chroot environment"
+    cat $spec_in | sed -e "$re" > $spec_out \
+        && git compress $prefix $refspec $HOME/rpmbuild/SOURCES $archive_ext \
+        && TMPDIR=/tmp ${MER_SDK_ROOT}/mer-sdk-chroot sb2 -t $target bash -c "\"$cmd\""
+        #&& TMPDIR=/tmp sudo /usr/local/bin/mer-sdk-compile $target $curdir "\"$cmd\""
+fi
+
+
