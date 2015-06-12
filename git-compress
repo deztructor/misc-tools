@@ -28,7 +28,7 @@ case $ext in
 esac
 
 out=$3/$1.tar.$ext
-echo "Compress with $tool"
+echo "Compress $out with $tool"
 
 cd "$(git rev-parse --show-toplevel)"
 

@@ -13,7 +13,10 @@ if [ $# -le 2 ]; then
     usage
 fi
 
-if [ "x${MER_SDK_ROOT}" == "x" ]; then
+USE_COMPILE_SCRIPT=false
+if [ -x /usr/local/bin/mer-sdk-compile ]; then
+    USE_COMPILE_SCRIPT=true
+elif [ "x${MER_SDK_ROOT}" == "x" ]; then
     echo "Define MER_SDK_ROOT environment var"
     exit 1
 fi
@@ -24,7 +27,7 @@ target=$2
 refspec=$3
 archive_ext=$4
 
-tag=$(git describe --abbrev=0 --tags | sed -e 's|.*/||' -e 's|-git[0-9]*||')
+tag=$(git describe --abbrev=0 --tags | sed -e 's|.*/||' -e 's|-git[0-9]*||' -e 's|^v||')
 echo "Version $tag"
 if ! [ -f $spec_in ] && [ -f $spec ]; then
     echo "Using $spec as the source spec file"
@@ -33,13 +36,15 @@ fi
 echo "Using spec file $spec_in"
 archive_ext=$(grep '^Source0:' $spec_in | head -n 1 \
                      | sed -e 's|^.*\.||')
+echo "Archive ext: $archive_ext"
 spec_dir=$(dirname $spec_in)
 spec_out=$HOME/rpmbuild/SOURCES/$(basename $spec_in)
-name=$(grep '^Name: ' $spec_in | head -n 1 | cut -d ':' -f 2  | tr -d ' ')
+name=$(grep '^Name:' $spec_in | head -n 1 | cut -d ':' -f 2  | tr -d ' \t')
+echo "Package name: $name"
 prefix=$name-$tag
 
 for i in $(cat $spec_in | grep '^Source[0-9]*:' | sed -e 's/^Source[0-9]*: *//'); do
-    i=$(echo "$i" | sed -e "s|%{name}|$name|" -e "s|%{version}|$tag|")
+    i=$(echo "$i" | sed -e "s|%{name}|$name|" -e "s|%{version}|$tag|" -e 's|%{.*}||')
     echo "Taking file $i"
     fname=$spec_dir/$i
     if [ -f $fname ]; then
@@ -48,6 +53,15 @@ for i in $(cat $spec_in | grep '^Source[0-9]*:' | sed -e 's/^Source[0-9]*: *//')
     fi
 done
 
+aux_params=
+
+arch_file=${HOME}/.scratchbox2/${target}/target
+if [ -f ${arch_file} ]; then
+    target_arch=$(cat $arch_file)
+    echo "Overwrite target arch to $target_arch"
+    aux_params="$aux_params --target=${target_arch}"
+fi
+
 curdir=`pwd`
 echo "Building package $name"
 echo "Using $tag commit. Prefix: $prefix"
@@ -55,19 +69,20 @@ re="s/^Version:.*$/Version: $tag/"
 echo "RE: $re"
 if [ $target == "local" ]; then
     echo "Build multiarch, no oneshot"
-    cmd="rpmbuild ${@:5} -ba $spec_out"
+    cmd="rpmbuild ${@:5} ${aux_params} -ba $spec_out"
     echo "Building using: $cmd"
     cat $spec_in | sed -e "$re" > $spec_out \
         && git compress $prefix $refspec $HOME/rpmbuild/SOURCES $archive_ext \
         && $cmd --with=multiarch --without=oneshot --without=usersession --define 'statefs_group wheel'
 else
-    cmd="sdk-rpmbuild ${@:5} $spec_out"
+    cmd="sdk-rpmbuild ${@:5} ${aux_params} $spec_out"
     echo "Building using: $cmd"
     echo "In mer sdk chroot environment"
     cat $spec_in | sed -e "$re" > $spec_out \
         && git compress $prefix $refspec $HOME/rpmbuild/SOURCES $archive_ext \
-        && TMPDIR=/tmp ${MER_SDK_ROOT}/mer-sdk-chroot sb2 -t $target bash -c "\"$cmd\""
-        #&& TMPDIR=/tmp sudo /usr/local/bin/mer-sdk-compile $target $curdir "\"$cmd\""
+        && ($USE_COMPILE_SCRIPT \
+                   && TMPDIR=/tmp sudo /usr/local/bin/mer-sdk-compile $target $curdir "\"$cmd\"" \
+                       || TMPDIR=/tmp ${MER_SDK_ROOT}/mer-sdk-chroot sb2 -t $target bash -c "\"$cmd\"")
 fi
 
 
