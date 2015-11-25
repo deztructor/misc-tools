@@ -74,6 +74,13 @@ if [ $target == "local" ]; then
     cat $spec_in | sed -e "$re" > $spec_out \
         && git compress $prefix $refspec $HOME/rpmbuild/SOURCES $archive_ext \
         && $cmd --with=multiarch --without=oneshot --without=usersession --define 'statefs_group wheel'
+elif [ $target == "arm-sdk" ]; then
+    echo "Build in the Jussi's arm sdk"
+    cmd="rpmbuild ${@:5} ${aux_params} -ba $spec_out"
+    echo "Building using: $cmd"
+    cat $spec_in | sed -e "$re" > $spec_out \
+        && git compress $prefix $refspec $HOME/rpmbuild/SOURCES $archive_ext \
+        && $cmd
 else
     cmd="sdk-rpmbuild ${@:5} ${aux_params} $spec_out"
     echo "Building using: $cmd"
@@ -81,7 +88,7 @@ else
     cat $spec_in | sed -e "$re" > $spec_out \
         && git compress $prefix $refspec $HOME/rpmbuild/SOURCES $archive_ext \
         && ($USE_COMPILE_SCRIPT \
-                   && TMPDIR=/tmp sudo /usr/local/bin/mer-sdk-compile $target $curdir "\"$cmd\"" \
+                   && (echo "mer-sdk-compile $target" && TMPDIR=/tmp sudo /usr/local/bin/mer-sdk-compile $target $curdir "\"$cmd\"" || echo "Build is failed") \
                        || TMPDIR=/tmp ${MER_SDK_ROOT}/mer-sdk-chroot sb2 -t $target bash -c "\"$cmd\"")
 fi
 
